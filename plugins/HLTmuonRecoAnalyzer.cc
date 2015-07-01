@@ -16,6 +16,8 @@ HLTmuonRecoAnalyzer::HLTmuonRecoAnalyzer(const edm::ParameterSet& iConfig)
 {
    //now do what ever initialization is needed
     L2muonsLabel_=  iConfig.getParameter<edm::InputTag>("L2muonsCollection");
+    L3muonsLabel_=  iConfig.getParameter<edm::InputTag>("L3muonsCollection");
+    beamSpotLabel_=  iConfig.getParameter<edm::InputTag>("BeamSpot");
     theMuonRecHitBuilderName_ = iConfig.getParameter<std::string>("MuonRecHitBuilder");
     outputFile_     = iConfig.getParameter<std::string>("outputFile");
     rootFile_       = TFile::Open(outputFile_.c_str(),"RECREATE");
@@ -49,17 +51,30 @@ HLTmuonRecoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     edm::ESHandle<GlobalTrackingGeometry> trackingGeometry; 
     iSetup.get<GlobalTrackingGeometryRecord>().get(trackingGeometry); 
 
-	edm::ESHandle<MagneticField> magField;				iSetup.get<IdealMagneticFieldRecord>().get(magField);
+	edm::ESHandle<MagneticField> magField;
+    iSetup.get<IdealMagneticFieldRecord>().get(magField);
  
-    edm::Handle<std::vector<reco::Track> > L2Tracks;
-    iEvent.getByLabel(L2muonsLabel_, L2Tracks);
+   /* edm::Handle<std::vector<reco::Track> > L2Tracks;
+    iEvent.getByLabel(L2muonsLabel_, L2Tracks);*/
+    
+    Handle<reco::RecoChargedCandidateCollection> allMuons;
+    iEvent.getByLabel(L2muonsLabel_, allMuons);
+    
+    Handle<reco::RecoChargedCandidateCollection> allL3Muons;
+    iEvent.getByLabel(L3muonsLabel_, allL3Muons);
+    
+    Handle<reco::BeamSpot> beamSpotHandle;
+    iEvent.getByLabel(beamSpotLabel_, beamSpotHandle);
+    const reco::BeamSpot& theBeamSpot = *beamSpotHandle;
+    reco::BeamSpot::Point beamSpot = beamSpotHandle->position();
+    
     
     edm::ESHandle<TrackerGeometry> geom;
     iSetup.get<TrackerDigiGeometryRecord>().get( geom );
     const TrackerGeometry& theTracker( *geom );
     
     bool changedConfig = false;
-    if (!hltConfig.init(iEvent.getRun(), iSetup, "HLTX", changedConfig)) {
+    if (!hltConfig.init(iEvent.getRun(), iSetup, "HLTfancy", changedConfig)) {
         cout << "Initialization of HLTConfigProvider failed!!" << endl;
         return;
     }
@@ -75,70 +90,52 @@ HLTmuonRecoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     
     
     
-    edm::InputTag triggerResultsLabel = edm::InputTag("TriggerResults", "", "HLTX");
+    edm::InputTag triggerResultsLabel = edm::InputTag("TriggerResults", "", "HLTfancy");
     edm::Handle<edm::TriggerResults> triggerResults;
     iEvent.getByLabel(triggerResultsLabel, triggerResults);
     
-    std::cout << "passing the trigger=" << triggerResults->accept(triggerBit) << std::endl;
-    T_Event_PassL3muon = triggerResults->accept(triggerBit);
+  //  std::cout << "passing the trigger=" << triggerResults->accept(triggerBit) << std::endl;
+   // T_Event_PassL3muon = triggerResults->accept(triggerBit);
     T_Event_RunNumber =  iEvent.id().run();
     T_Event_EventNumber = iEvent.id().event();
     
-    int nbL2muons = (*L2Tracks).size();
-    if (nbL2muons==0) return;
-    
-    for (int i=0 ; i < nbL2muons ; i++){
-        const reco::Track theTrack = (*L2Tracks)[i];
-        T_L2muon_Pt->push_back(theTrack.pt());
-        T_L2muon_Eta->push_back(theTrack.innerMomentum().eta());
-        T_L2muon_Phi->push_back(theTrack.innerMomentum().phi());
-        T_L2muon_dz->push_back(theTrack.dz());
-        T_L2muon_dxy->push_back(theTrack.dxy());
-        int count = 0;
-       //for (trackingRecHit_iterator hit = theTrack.recHitsBegin(); hit != theTrack.recHitsEnd(); ++hit) {
-         //   if((*hit)->isValid()) {
-           //     count++;
-                // TransientTrackingRecHit::ConstRecHitPointer ttrh(theMuonRecHitBuilder->build(*hit));
-           // }
-       // }
-        T_L2muon_Hits->push_back(count);
+    if (allMuons.isValid()){
+    for(reco::RecoChargedCandidateCollection::const_iterator cand=allMuons->begin(); cand!=allMuons->end(); cand++){
+        reco::TrackRef mu = cand->get<reco::TrackRef>();
+        //const reco::Track theTrack = (*L2Tracks)[i];
+        T_L2muon_Pt->push_back(mu->pt());
+        T_L2muon_Eta->push_back(mu->eta());
+        T_L2muon_Phi->push_back(mu->phi());
+        T_L2muon_dz->push_back(mu->dz());
+        T_L2muon_dxy->push_back(mu->dxy());
+        T_L2muon_dzBS->push_back(mu->dz(beamSpot));
+        T_L2muon_dxyBS->push_back(mu->dxy(beamSpot));
+        T_L2muon_nbStationWithHits->push_back(mu->hitPattern().muonStationsWithAnyHits());
+        T_L2muon_nbStationWithHitsDT->push_back(mu->hitPattern().dtStationsWithAnyHits());
+        T_L2muon_nbStationWithHitsCSC->push_back(mu->hitPattern().cscStationsWithAnyHits());
+        T_L2muon_nbValidHits->push_back(mu->numberOfValidHits());
+        double abspar0 = std::abs(mu->parameter(0));
+        double ptLx = mu->pt();
+      // convert 50% efficiency threshold to 90% efficiency threshold
+        if(abspar0 > 0) ptLx += 1.*mu->error(0)/abspar0*mu->pt();
+        T_L2muon_ptLx->push_back(ptLx);
     }
- 
-    edm::InputTag clusterProducerStripLabel_ = edm::InputTag("hltSiStripRawToClustersFacility");
-    //edm::InputTag clusterProducerStripLabel_ = edm::InputTag("siStripClusters");
-     edm::Handle< edmNew::DetSetVector<SiStripCluster> > cluster_detsetvektor;
-     iEvent.getByLabel(clusterProducerStripLabel_, cluster_detsetvektor);
-    T_nbStripClusters = -1;
-    if (cluster_detsetvektor.isValid()){
-	const edmNew::DetSetVector<SiStripCluster> * StrC= cluster_detsetvektor.product();
-        int NStripClusters= StrC->data().size();
-        T_nbStripClusters = NStripClusters;
-            }
-    
-    
-    for (edmNew::DetSetVector<SiStripCluster>::const_iterator clustSet = cluster_detsetvektor->begin(); clustSet!=cluster_detsetvektor->end(); ++clustSet) {
-        edmNew::DetSet<SiStripCluster>::const_iterator clustIt = clustSet->begin();
-        edmNew::DetSet<SiStripCluster>::const_iterator end     = clustSet->end();
+    } 
+    if (allL3Muons.isValid()){
+    for(reco::RecoChargedCandidateCollection::const_iterator cand=allL3Muons->begin(); cand!=allL3Muons->end(); cand++){
+        reco::TrackRef l3track = cand->track();
+        T_L3muon_Pt->push_back(cand->pt());
+        T_L3muon_Eta->push_back(cand->eta());
+        T_L3muon_Phi->push_back(cand->phi());
+        T_L3muon_dr->push_back(std::abs( (- (cand->vx()-theBeamSpot.x0()) * cand->py() + (cand->vy()-theBeamSpot.y0()) * cand->px() ) / cand->pt() ));
+        T_L3muon_dz->push_back(std::abs((cand->vz()-theBeamSpot.z0()) - ((cand->vx()-theBeamSpot.x0())*cand->px()+(cand->vy()-theBeamSpot.y0())*cand->py())/cand->pt() * cand->pz()/cand->pt()));
+        T_L3muon_dxyBS->push_back(std::abs(l3track->dxy(beamSpot)));
+        T_L3muon_Chi2->push_back(l3track->normalizedChi2());
         
-        DetId detIdObject( clustSet->detId() );
-    //    edmNew::DetSetVector<SiStripCluster>::FastFiller spc(*output, detIdObject.rawId());
-        const StripGeomDetUnit* theGeomDet = dynamic_cast<const StripGeomDetUnit*> (theTracker.idToDet(detIdObject) );
-        const StripTopology * topol = dynamic_cast<const StripTopology*>(&(theGeomDet->specificTopology()));
         
-        for(; clustIt!=end;++clustIt) {
-            LocalPoint lpclust = topol->localPosition(clustIt->barycenter());
-            GlobalPoint GPclust = theGeomDet->surface().toGlobal(Local3DPoint(lpclust.x(),lpclust.y(),lpclust.z()));
-            double clustX = GPclust.x();
-            double clustY = GPclust.y();
-            double clustZ = GPclust.z();
-            
-            T_StripCluster_x->push_back(clustX);
-            T_StripCluster_y->push_back(clustY);
-            T_StripCluster_z->push_back(clustZ);
-        }
     }
- 
-    edm::Handle<L3MuonTrajectorySeedCollection> L3seedCollection;
+    }
+    /*edm::Handle<L3MuonTrajectorySeedCollection> L3seedCollection;
     edm::InputTag L3seedCollectionTag = edm::InputTag("hltL3TrajSeedOIStateNoVtx");
     iEvent.getByLabel(L3seedCollectionTag, L3seedCollection);
     cout << L3seedCollection.isValid() << endl;
@@ -168,7 +165,7 @@ HLTmuonRecoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
         T_L3seed_Z->push_back(zSeed);
     }
  
-   // if (T_Event_PassL3muon) mytree_->Fill();
+   // if (T_Event_PassL3muon) mytree_->Fill();*/
     mytree_->Fill();
     endEvent();
 
@@ -192,19 +189,22 @@ HLTmuonRecoAnalyzer::beginJob()
     mytree_->Branch("T_L2muon_Phi", "std::vector<float>", &T_L2muon_Phi);
     mytree_->Branch("T_L2muon_dxy", "std::vector<float>", &T_L2muon_dxy);
     mytree_->Branch("T_L2muon_dz", "std::vector<float>", &T_L2muon_dz);
-    mytree_->Branch("T_L2muon_Hits", "std::vector<int>", &T_L2muon_Hits);
+    mytree_->Branch("T_L2muon_dxyBS", "std::vector<float>", &T_L2muon_dxyBS);
+    mytree_->Branch("T_L2muon_dzBS", "std::vector<float>", &T_L2muon_dzBS);
+    mytree_->Branch("T_L2muon_ptLx", "std::vector<float>", &T_L2muon_ptLx);
+    mytree_->Branch("T_L2muon_nbStationWithHits", "std::vector<int>", &T_L2muon_nbStationWithHits);
+    mytree_->Branch("T_L2muon_nbStationWithHitsDT", "std::vector<int>", &T_L2muon_nbStationWithHitsDT);
+    mytree_->Branch("T_L2muon_nbStationWithHitsCSC", "std::vector<int>", &T_L2muon_nbStationWithHitsCSC);
+    mytree_->Branch("T_L2muon_nbValidHits", "std::vector<int>", &T_L2muon_nbValidHits);
     
-    mytree_->Branch("T_L3seed_Pt", "std::vector<float>", &T_L3seed_Pt);
-    mytree_->Branch("T_L3seed_Eta", "std::vector<float>", &T_L3seed_Eta);
-    mytree_->Branch("T_L3seed_Phi", "std::vector<float>", &T_L3seed_Phi);
-    mytree_->Branch("T_L3seed_X", "std::vector<float>", &T_L3seed_X);
-    mytree_->Branch("T_L3seed_Y", "std::vector<float>", &T_L3seed_Y);
-    mytree_->Branch("T_L3seed_Z", "std::vector<float>", &T_L3seed_Z);
-    
-    
-    mytree_->Branch("T_StripCluster_x", "std::vector<float>", &T_StripCluster_x);
-    mytree_->Branch("T_StripCluster_y", "std::vector<float>", &T_StripCluster_y);
-    mytree_->Branch("T_StripCluster_z", "std::vector<float>", &T_StripCluster_z);
+    mytree_->Branch("T_L3muon_Pt", "std::vector<float>", &T_L3muon_Pt);
+    mytree_->Branch("T_L3muon_Eta", "std::vector<float>", &T_L3muon_Eta);
+    mytree_->Branch("T_L3muon_Phi", "std::vector<float>", &T_L3muon_Phi);
+    mytree_->Branch("T_L3muon_dr", "std::vector<float>", &T_L3muon_dr);
+    mytree_->Branch("T_L3muon_dz", "std::vector<float>", &T_L3muon_dz);
+    mytree_->Branch("T_L3muon_dxyBS", "std::vector<float>", &T_L3muon_dxyBS);
+    mytree_->Branch("T_L3muon_Chi2", "std::vector<float>", &T_L3muon_Chi2);
+
 
 
 }
@@ -225,18 +225,22 @@ HLTmuonRecoAnalyzer::beginEvent()
     T_L2muon_Phi = new std::vector<float>;
     T_L2muon_dxy = new std::vector<float>;
     T_L2muon_dz = new std::vector<float>;
-    T_L2muon_Hits = new std::vector<int>;
+    T_L2muon_dxyBS = new std::vector<float>;
+    T_L2muon_dzBS = new std::vector<float>;
+    T_L2muon_ptLx = new std::vector<float>;
+    T_L2muon_nbStationWithHits = new std::vector<int>;
+    T_L2muon_nbStationWithHitsDT = new std::vector<int>;
+    T_L2muon_nbStationWithHitsCSC = new std::vector<int>;
+    T_L2muon_nbValidHits = new std::vector<int>;
     
-    T_L3seed_Pt = new std::vector<float>;
-    T_L3seed_Eta = new std::vector<float>;
-    T_L3seed_Phi = new std::vector<float>;
-    T_L3seed_X = new std::vector<float>;
-    T_L3seed_Y = new std::vector<float>;
-    T_L3seed_Z = new std::vector<float>;
+    T_L3muon_Pt = new std::vector<float>;
+    T_L3muon_Eta = new std::vector<float>;
+    T_L3muon_Phi = new std::vector<float>;
+    T_L3muon_dr = new std::vector<float>;
+    T_L3muon_dz = new std::vector<float>;
+    T_L3muon_dxyBS = new std::vector<float>;
+    T_L3muon_Chi2 = new std::vector<float>;
 
-    T_StripCluster_x = new std::vector<float>;
-    T_StripCluster_y = new std::vector<float>;
-    T_StripCluster_z = new std::vector<float>;
 
 }
 
@@ -248,18 +252,23 @@ HLTmuonRecoAnalyzer::endEvent()
     delete T_L2muon_Phi;
     delete T_L2muon_dxy;
     delete T_L2muon_dz;
-    delete T_L2muon_Hits;
+    delete T_L2muon_dxyBS;
+    delete T_L2muon_dzBS;
+    delete T_L2muon_ptLx;
+    delete T_L2muon_nbStationWithHits;
+    delete T_L2muon_nbStationWithHitsDT;
+    delete T_L2muon_nbStationWithHitsCSC;
+    delete T_L2muon_nbValidHits;
+
     
-    delete T_L3seed_Pt;
-    delete T_L3seed_Eta;
-    delete T_L3seed_Phi;
-    delete T_L3seed_X;
-    delete T_L3seed_Y;
-    delete T_L3seed_Z;
+    delete T_L3muon_Pt;
+    delete T_L3muon_Eta;
+    delete T_L3muon_Phi;
+    delete T_L3muon_dr;
+    delete T_L3muon_dz;
+    delete T_L3muon_dxyBS;
+    delete T_L3muon_Chi2;
     
-    delete T_StripCluster_x;
-    delete T_StripCluster_y;
-    delete T_StripCluster_z;
 
 
 }

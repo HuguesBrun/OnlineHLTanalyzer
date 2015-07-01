@@ -33,6 +33,12 @@
 
 #include "DataFormats/TrackReco/interface/TrackFwd.h"
 #include "DataFormats/TrackReco/interface/Track.h"
+#include "DataFormats/Common/interface/RefToBase.h"
+
+#include "DataFormats/RecoCandidate/interface/RecoChargedCandidate.h"
+#include "DataFormats/RecoCandidate/interface/RecoChargedCandidateFwd.h"
+
+#include "DataFormats/BeamSpot/interface/BeamSpot.h"
 
 #include "TrackingTools/TransientTrack/interface/TransientTrack.h"
 #include "TrackingTools/Records/interface/TransientRecHitRecord.h"
@@ -123,6 +129,8 @@ class HLTmuonRecoAnalyzer : public edm::EDAnalyzer {
 
       // ----------member data ---------------------------
     edm::InputTag L2muonsLabel_;
+    edm::InputTag L3muonsLabel_;
+    edm::InputTag beamSpotLabel_;
     std::string theMuonRecHitBuilderName_;
 
     
@@ -144,19 +152,24 @@ class HLTmuonRecoAnalyzer : public edm::EDAnalyzer {
     std::vector<float>* T_L2muon_Phi;
     std::vector<float>* T_L2muon_dxy;
     std::vector<float>* T_L2muon_dz;
-    std::vector<int>*   T_L2muon_Hits;
+    std::vector<float>* T_L2muon_dxyBS;
+    std::vector<float>* T_L2muon_dzBS;
+    std::vector<float>* T_L2muon_ptLx;
+    std::vector<int>* T_L2muon_nbStationWithHits;
+    std::vector<int>* T_L2muon_nbStationWithHitsDT;
+    std::vector<int>* T_L2muon_nbStationWithHitsCSC;
+    std::vector<int>* T_L2muon_nbValidHits;
     
     
-    std::vector<float>* T_L3seed_Pt;
-    std::vector<float>* T_L3seed_Eta;
-    std::vector<float>* T_L3seed_Phi;
-    std::vector<float>* T_L3seed_X;
-    std::vector<float>* T_L3seed_Y;
-    std::vector<float>* T_L3seed_Z;
     
-    std::vector<float>* T_StripCluster_x;
-    std::vector<float>* T_StripCluster_y;
-    std::vector<float>* T_StripCluster_z;
+    std::vector<float>* T_L3muon_Pt;
+    std::vector<float>* T_L3muon_Eta;
+    std::vector<float>* T_L3muon_Phi;
+    std::vector<float>* T_L3muon_dr;
+    std::vector<float>* T_L3muon_dz;
+    std::vector<float>* T_L3muon_dxyBS;
+    std::vector<float>* T_L3muon_Chi2;
+
 
     
     
