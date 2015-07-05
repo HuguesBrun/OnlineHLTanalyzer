@@ -132,6 +132,7 @@ class HLTmuonRecoAnalyzer : public edm::EDAnalyzer {
     edm::InputTag L3muonsLabel_;
     edm::InputTag beamSpotLabel_;
     std::string theMuonRecHitBuilderName_;
+    std::vector<std::string> pathsToSave_;
 
     
     // Tree and outfile
@@ -146,6 +147,8 @@ class HLTmuonRecoAnalyzer : public edm::EDAnalyzer {
     int T_Event_EventNumber;
     int T_Event_LuminosityBlock;
     int T_Event_PassL3muon;
+    
+    std::vector<int> *T_Event_pathsFired;
     
     std::vector<float>* T_L2muon_Pt;
     std::vector<float>* T_L2muon_Eta;
@@ -175,10 +178,8 @@ class HLTmuonRecoAnalyzer : public edm::EDAnalyzer {
     
     int T_nbStripClusters;
 
-    
     HLTConfigProvider hltConfig;
-    int triggerBit;
-    
+    std::vector<int> triggerBits_;    
 };
 
 //

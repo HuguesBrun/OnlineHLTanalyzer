@@ -15,6 +15,7 @@ HLTmuonRecoAnalyzer::HLTmuonRecoAnalyzer(const edm::ParameterSet& iConfig)
 
 {
    //now do what ever initialization is needed
+    pathsToSave_ = iConfig.getParameter<std::vector<std::string> >("pathsToSave");
     L2muonsLabel_=  iConfig.getParameter<edm::InputTag>("L2muonsCollection");
     L3muonsLabel_=  iConfig.getParameter<edm::InputTag>("L3muonsCollection");
     beamSpotLabel_=  iConfig.getParameter<edm::InputTag>("BeamSpot");
@@ -63,10 +64,10 @@ HLTmuonRecoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     Handle<reco::RecoChargedCandidateCollection> allL3Muons;
     iEvent.getByLabel(L3muonsLabel_, allL3Muons);
     
-    Handle<reco::BeamSpot> beamSpotHandle;
+    /*Handle<reco::BeamSpot> beamSpotHandle;
     iEvent.getByLabel(beamSpotLabel_, beamSpotHandle);
     const reco::BeamSpot& theBeamSpot = *beamSpotHandle;
-    reco::BeamSpot::Point beamSpot = beamSpotHandle->position();
+    reco::BeamSpot::Point beamSpot = beamSpotHandle->position();*/
     
     
     edm::ESHandle<TrackerGeometry> geom;
@@ -79,12 +80,18 @@ HLTmuonRecoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
         return;
     }
     if (changedConfig){
+        unsigned int nbPaths = pathsToSave_.size();
         std::cout << "the curent menu is " << hltConfig.tableName() << std::endl;
-        triggerBit = -1;
-        for (size_t j = 0; j < hltConfig.triggerNames().size(); j++) {
-            if (TString(hltConfig.triggerNames()[j]).Contains("HLT_L3Mu0_NoFilterNoVtx_v1")) triggerBit = j;
+        for (unsigned int itePath=0 ; itePath<nbPaths ; itePath++){
+            for (size_t j = 0; j < hltConfig.triggerNames().size(); j++) {
+                if (TString(hltConfig.triggerNames()[j]).Contains(pathsToSave_.at(itePath))){
+                    triggerBits_.push_back(j);
+                    cout << "found the path " << pathsToSave_.at(itePath) << endl;
+                }
+                
+            }
         }
-        if (triggerBit == -1) cout << "HLT path not found" << endl;
+        if (triggerBits_.size() <nbPaths) cout << "an HLT paths is not found ! ! " << endl;
         
     }
     
@@ -99,6 +106,15 @@ HLTmuonRecoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     T_Event_RunNumber =  iEvent.id().run();
     T_Event_EventNumber = iEvent.id().event();
     
+    for (unsigned int itePath = 0 ; itePath < triggerBits_.size() ; itePath++){
+        if (triggerResults->accept(triggerBits_.at(itePath))) {
+            edm::LogVerbatim("HLTmuonRecoAnalyzer") << "passing path " << itePath << endl;
+            T_Event_pathsFired->push_back(1);
+        }
+        else T_Event_pathsFired->push_back(0);
+    }
+    
+    
     if (allMuons.isValid()){
     for(reco::RecoChargedCandidateCollection::const_iterator cand=allMuons->begin(); cand!=allMuons->end(); cand++){
         reco::TrackRef mu = cand->get<reco::TrackRef>();
@@ -108,8 +124,8 @@ HLTmuonRecoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
         T_L2muon_Phi->push_back(mu->phi());
         T_L2muon_dz->push_back(mu->dz());
         T_L2muon_dxy->push_back(mu->dxy());
-        T_L2muon_dzBS->push_back(mu->dz(beamSpot));
-        T_L2muon_dxyBS->push_back(mu->dxy(beamSpot));
+        //T_L2muon_dzBS->push_back(mu->dz(beamSpot));
+        //T_L2muon_dxyBS->push_back(mu->dxy(beamSpot));
         T_L2muon_nbStationWithHits->push_back(mu->hitPattern().muonStationsWithAnyHits());
         T_L2muon_nbStationWithHitsDT->push_back(mu->hitPattern().dtStationsWithAnyHits());
         T_L2muon_nbStationWithHitsCSC->push_back(mu->hitPattern().cscStationsWithAnyHits());
@@ -127,9 +143,9 @@ HLTmuonRecoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
         T_L3muon_Pt->push_back(cand->pt());
         T_L3muon_Eta->push_back(cand->eta());
         T_L3muon_Phi->push_back(cand->phi());
-        T_L3muon_dr->push_back(std::abs( (- (cand->vx()-theBeamSpot.x0()) * cand->py() + (cand->vy()-theBeamSpot.y0()) * cand->px() ) / cand->pt() ));
-        T_L3muon_dz->push_back(std::abs((cand->vz()-theBeamSpot.z0()) - ((cand->vx()-theBeamSpot.x0())*cand->px()+(cand->vy()-theBeamSpot.y0())*cand->py())/cand->pt() * cand->pz()/cand->pt()));
-        T_L3muon_dxyBS->push_back(std::abs(l3track->dxy(beamSpot)));
+        //T_L3muon_dr->push_back(std::abs( (- (cand->vx()-theBeamSpot.x0()) * cand->py() + (cand->vy()-theBeamSpot.y0()) * cand->px() ) / cand->pt() ));
+        //T_L3muon_dz->push_back(std::abs((cand->vz()-theBeamSpot.z0()) - ((cand->vx()-theBeamSpot.x0())*cand->px()+(cand->vy()-theBeamSpot.y0())*cand->py())/cand->pt() * cand->pz()/cand->pt()));
+        //T_L3muon_dxyBS->push_back(std::abs(l3track->dxy(beamSpot)));
         T_L3muon_Chi2->push_back(l3track->normalizedChi2());
         
         
@@ -184,6 +200,8 @@ HLTmuonRecoAnalyzer::beginJob()
     mytree_->Branch("T_nbStripClusters", &T_nbStripClusters, "T_nbStripClusters/I");
     mytree_->Branch("T_Event_PassL3muon", &T_Event_PassL3muon, "T_Event_PassL3muon/I");
     
+    mytree_->Branch("T_Event_pathsFired", "std::vector<int>", &T_Event_pathsFired);
+    
     mytree_->Branch("T_L2muon_Pt", "std::vector<float>", &T_L2muon_Pt);
     mytree_->Branch("T_L2muon_Eta", "std::vector<float>", &T_L2muon_Eta);
     mytree_->Branch("T_L2muon_Phi", "std::vector<float>", &T_L2muon_Phi);
@@ -220,6 +238,8 @@ HLTmuonRecoAnalyzer::endJob()
 void
 HLTmuonRecoAnalyzer::beginEvent()
 {
+    T_Event_pathsFired = new std::vector<int>;
+    
     T_L2muon_Pt = new std::vector<float>;
     T_L2muon_Eta = new std::vector<float>;
     T_L2muon_Phi = new std::vector<float>;
@@ -247,6 +267,8 @@ HLTmuonRecoAnalyzer::beginEvent()
 void
 HLTmuonRecoAnalyzer::endEvent()
 {
+    delete T_Event_pathsFired;
+    
     delete T_L2muon_Pt;
     delete T_L2muon_Eta;
     delete T_L2muon_Phi;
